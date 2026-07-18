@@ -78,5 +78,22 @@ Asegúrate de tener al menos algunos platos etiquetados `tupper` y `rapido` (par
 - **Inspeccionar la base de datos**: `sqlite3 data/comidas.db` (es una DB de uso personal, la cirugía manual con SQL directo es aceptable si algo se queda atascado).
 - **Resetear una semana atascada**: borra a mano las filas de `plan_slots` y `weekly_plans` correspondientes a esa `week_start_date`.
 - **Probar la conexión CalDAV** sin pasar por el bot: usa un script suelto de Python con el paquete `caldav` contra `RADICALE_URL`/`RADICALE_USERNAME`/`RADICALE_PASSWORD` para confirmar que lees bien los eventos de `Turnos` antes de depurar el bot en sí.
+- **`CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`**: casi siempre significa que tu servidor (nginx/lo que tengas delante de Radicale) no está sirviendo la cadena completa del certificado — con Let's Encrypt hay que usar `fullchain.pem`, no `cert.pem`, en la configuración del proxy. Compruébalo desde fuera del contenedor:
+  ```bash
+  curl -v https://radicale.pollete.duckdns.org/ 2>&1 | grep -i "issuer\|certificate"
+  openssl s_client -connect radicale.pollete.duckdns.org:443 -servername radicale.pollete.duckdns.org </dev/null 2>/dev/null | openssl x509 -noout -issuer -subject
+  ```
+  Si `curl` también se queja, el problema es del servidor (arréglalo ahí, es lo correcto). Si tu certificado es autofirmado o de una CA propia y no vas a cambiarlo, monta el certificado de esa CA en el contenedor y apunta `RADICALE_SSL_VERIFY` a su ruta en vez de a `true`/`false`:
+  ```yaml
+  # docker-compose.yml
+  volumes:
+    - ./data:/app/data
+    - ./mi-ca.pem:/app/mi-ca.pem:ro
+  ```
+  ```
+  # .env
+  RADICALE_SSL_VERIFY=/app/mi-ca.pem
+  ```
+  `RADICALE_SSL_VERIFY=false` desactiva la verificación por completo — solo como último recurso, ya que expone la contraseña de Radicale a un posible ataque de intermediario.
 - **`/addplatourl` falla**: comprueba que `GEMINI_API_KEY` está rellena en `.env` y que el enlace es accesible públicamente (sin login).
 - **`/tarea` o la tarea automática fallan**: comprueba que existe en Radicale un calendario/lista de tareas con el nombre exacto de `RADICALE_TASKS_CALENDAR_NAME` (por defecto `Tareas`) y que admite componentes `VTODO`.

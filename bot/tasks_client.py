@@ -17,6 +17,7 @@ def push_shopping_list_task(week_start: date, shopping_text: str) -> None:
         url=config.radicale_url,
         username=config.radicale_username,
         password=config.radicale_password,
+        ssl_verify_cert=config.radicale_ssl_verify,
     )
     principal = client.principal()
     calendar = principal.calendar(name=config.radicale_tasks_calendar_name)

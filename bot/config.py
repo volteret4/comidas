@@ -17,6 +17,7 @@ class Config:
     radicale_password: str
     radicale_calendar_name: str
     radicale_tasks_calendar_name: str
+    radicale_ssl_verify: bool | str
     db_path: str
     weekly_job_day: str
     weekly_job_time: str
@@ -32,6 +33,13 @@ class Config:
                 raise RuntimeError(f"Falta la variable de entorno obligatoria: {name}")
             return value
 
+        def parse_ssl_verify(value: str) -> bool | str:
+            if value.strip().lower() in ("true", "1", "yes"):
+                return True
+            if value.strip().lower() in ("false", "0", "no"):
+                return False
+            return value  # ruta a un fichero de CA personalizado
+
         return cls(
             telegram_bot_token=require("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=int(require("TELEGRAM_CHAT_ID")),
@@ -40,6 +48,7 @@ class Config:
             radicale_password=require("RADICALE_PASSWORD"),
             radicale_calendar_name=os.environ.get("RADICALE_CALENDAR_NAME", "Turnos"),
             radicale_tasks_calendar_name=os.environ.get("RADICALE_TASKS_CALENDAR_NAME", "Tareas"),
+            radicale_ssl_verify=parse_ssl_verify(os.environ.get("RADICALE_SSL_VERIFY", "true")),
             db_path=os.environ.get("DB_PATH", "data/comidas.db"),
             weekly_job_day=os.environ.get("WEEKLY_JOB_DAY", "SUN"),
             weekly_job_time=os.environ.get("WEEKLY_JOB_TIME", "20:00"),

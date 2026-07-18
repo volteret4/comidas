@@ -82,15 +82,36 @@ def extract_recipe(url: str) -> ExtractedRecipe:
         response = client.models.generate_content(
             model=config.gemini_model,
             contents=EXTRACTION_PROMPT.format(page_text=page_text),
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                max_output_tokens=8192,
+            ),
         )
-    except Exception as exc:  # errores de red/API de Gemini, no queremos tumbar el bot
+    except Exception as exc:  # errores de red/API de Gemini (incluida cuota agotada), no queremos tumbar el bot
         raise RecipeExtractionError(f"Fallo al llamar a Gemini: {exc}") from exc
+
+    finish_reason = None
+    candidates = getattr(response, "candidates", None) or []
+    if candidates:
+        finish_reason = str(getattr(candidates[0], "finish_reason", "") or "")
+    if finish_reason and finish_reason.upper() not in ("STOP", "FINISH_REASON_UNSPECIFIED", ""):
+        raise RecipeExtractionError(
+            f"Gemini cortó la respuesta antes de terminar ({finish_reason}). "
+            "Puede ser por la cuota gratuita agotada o por una receta demasiado larga; "
+            "espera un rato o inténtalo con otro enlace."
+        )
+
+    if not response.text:
+        raise RecipeExtractionError(
+            "Gemini no devolvió ningún contenido (puede ser la cuota gratuita agotada). Prueba de nuevo más tarde."
+        )
 
     try:
         data = json.loads(response.text)
     except (json.JSONDecodeError, TypeError) as exc:
-        raise RecipeExtractionError(f"Gemini no devolvió JSON válido: {exc}") from exc
+        raise RecipeExtractionError(
+            f"Gemini no devolvió JSON válido, probablemente la respuesta se cortó por cuota o límite de tamaño: {exc}"
+        ) from exc
 
     name = str(data.get("name") or "").strip()
     ingredients = [str(i).strip() for i in data.get("ingredients") or [] if str(i).strip()]

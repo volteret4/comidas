@@ -24,6 +24,7 @@ def fetch_shifts(start: date, end: date) -> dict[date, str]:
         url=config.radicale_url,
         username=config.radicale_username,
         password=config.radicale_password,
+        ssl_verify_cert=config.radicale_ssl_verify,
     )
     principal = client.principal()
     calendar = principal.calendar(name=config.radicale_calendar_name)
