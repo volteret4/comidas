@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
-from .. import planner
+from .. import planner, tasks_client
 from ..config import config
 from ..db import get_connection
 from ..models import Dish, PlanSlot
@@ -155,7 +155,23 @@ async def _finalize(context: ContextTypes.DEFAULT_TYPE, chat_id: int, plan) -> N
         return
     planner.mark_complete(conn, plan.id)
     await context.bot.send_message(chat_id, planner.week_summary_text(conn, plan))
-    await context.bot.send_message(chat_id, planner.shopping_list_text(conn, plan))
+    shopping_text = planner.shopping_list_text(conn, plan)
+    await context.bot.send_message(chat_id, shopping_text)
+    await push_task_and_notify(context, chat_id, plan, shopping_text)
+
+
+async def push_task_and_notify(context: ContextTypes.DEFAULT_TYPE, chat_id: int, plan, shopping_text: str) -> None:
+    week_start = date.fromisoformat(plan.week_start_date)
+    try:
+        tasks_client.push_shopping_list_task(week_start, shopping_text)
+    except Exception:
+        logger.exception("Fallo al añadir la tarea al calendario %s", config.radicale_tasks_calendar_name)
+        await context.bot.send_message(
+            chat_id,
+            f"⚠️ No he podido añadir la tarea al calendario \"{config.radicale_tasks_calendar_name}\".",
+        )
+        return
+    await context.bot.send_message(chat_id, f'📋 Tarea añadida a tu calendario "{config.radicale_tasks_calendar_name}".')
 
 
 def register(application: Application) -> None:

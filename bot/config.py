@@ -16,6 +16,7 @@ class Config:
     radicale_username: str
     radicale_password: str
     radicale_calendar_name: str
+    radicale_tasks_calendar_name: str
     db_path: str
     weekly_job_day: str
     weekly_job_time: str
@@ -38,6 +39,7 @@ class Config:
             radicale_username=require("RADICALE_USERNAME"),
             radicale_password=require("RADICALE_PASSWORD"),
             radicale_calendar_name=os.environ.get("RADICALE_CALENDAR_NAME", "Turnos"),
+            radicale_tasks_calendar_name=os.environ.get("RADICALE_TASKS_CALENDAR_NAME", "Tareas"),
             db_path=os.environ.get("DB_PATH", "data/comidas.db"),
             weekly_job_day=os.environ.get("WEEKLY_JOB_DAY", "SUN"),
             weekly_job_time=os.environ.get("WEEKLY_JOB_TIME", "20:00"),

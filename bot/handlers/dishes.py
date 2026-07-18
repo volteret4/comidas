@@ -18,6 +18,7 @@ from telegram.ext import (
 from .. import gemini_client
 from ..db import get_connection
 from ..gemini_client import RecipeExtractionError
+from ..models import Dish
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +363,84 @@ async def listaplatos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # ---------------------------------------------------------------------------
+# /verplato — receta completa (ingredientes y pasos) de un plato
+# ---------------------------------------------------------------------------
+
+async def verplato(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    conn = get_connection()
+    query_text = " ".join(context.args).strip() if context.args else ""
+
+    if query_text.isdigit():
+        row = conn.execute("SELECT * FROM dishes WHERE id=? AND active=1", (int(query_text),)).fetchone()
+        if row is None:
+            await update.message.reply_text("No encuentro ningún plato activo con ese número.")
+            return
+        await update.message.reply_text(_format_dish_detail(row))
+        return
+
+    if query_text:
+        rows = conn.execute(
+            "SELECT id, name FROM dishes WHERE active=1 AND name LIKE ? ORDER BY name COLLATE NOCASE",
+            (f"%{query_text}%",),
+        ).fetchall()
+        if not rows:
+            await update.message.reply_text("No encuentro ningún plato activo con ese nombre.")
+            return
+    else:
+        rows = conn.execute("SELECT id, name FROM dishes WHERE active=1 ORDER BY name COLLATE NOCASE").fetchall()
+        if not rows:
+            await update.message.reply_text("No tienes ningún plato dado de alta todavía.")
+            return
+
+    if len(rows) == 1:
+        row = conn.execute("SELECT * FROM dishes WHERE id=?", (rows[0]["id"],)).fetchone()
+        await update.message.reply_text(_format_dish_detail(row))
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(row["name"], callback_data=f"d:view:{row['id']}")] for row in rows]
+    )
+    await update.message.reply_text("¿Qué plato quieres ver?", reply_markup=keyboard)
+
+
+async def verplato_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    dish_id = int(query.data.split(":")[-1])
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM dishes WHERE id=?", (dish_id,)).fetchone()
+    if row is None:
+        await query.edit_message_text("Ese plato ya no existe.")
+        return
+    await query.edit_message_text(_format_dish_detail(row))
+
+
+def _format_dish_detail(row) -> str:
+    dish = Dish.from_row(row)
+    meal = "comida y cena" if dish.for_comida and dish.for_cena else ("comida" if dish.for_comida else "cena")
+    tags = ", ".join(TAG_LABELS[t] for t in ("fresco", "tupper", "rapido") if dish.has_tag(t)) or "ninguna"
+
+    lines = [
+        f"*{dish.name}* (#{dish.id})",
+        f"Para: {meal}",
+        f"Etiquetas: {tags}",
+        f"Rendimiento: {dish.rendimiento} día(s)",
+        f"Método: {dish.metodo or 'sin especificar'}",
+        "",
+        "Ingredientes:",
+    ]
+    lines.extend(f"  - {i}" for i in dish.ingredients)
+    if dish.steps:
+        lines.append("")
+        lines.append("Pasos:")
+        lines.extend(f"  {n}. {s}" for n, s in enumerate(dish.steps, 1))
+    if dish.source_url:
+        lines.append("")
+        lines.append(f"Receta original: {dish.source_url}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # /borrarplato
 # ---------------------------------------------------------------------------
 
@@ -589,5 +668,7 @@ def register(application: Application) -> None:
     application.add_handler(add_conv)
     application.add_handler(edit_conv)
     application.add_handler(CommandHandler("listaplatos", listaplatos))
+    application.add_handler(CommandHandler("verplato", verplato))
+    application.add_handler(CallbackQueryHandler(verplato_callback, pattern="^d:view:"))
     application.add_handler(CommandHandler("borrarplato", borrarplato_start))
     application.add_handler(CallbackQueryHandler(borrarplato_callback, pattern="^d:del:"))
